@@ -37,13 +37,12 @@ bun.lockb
 *.tsbuildinfo
 next-env.d.ts
 
-# package-lock 
+# package-lock
 package-lock.json
 
 # extension build file
 /extension/dist/
 /extension/content-script.js
-/extension/inject-script.js
 /extension/*.output.css
 /extension/weiboSave/
 

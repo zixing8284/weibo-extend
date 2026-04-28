@@ -1,18 +1,19 @@
 import _ from 'lodash'
-import { UserType } from './interface'
-import { LimitPageOflikeUserFetch } from './constants'
 import { sleep } from './tools'
+
+const MEDIA_REQUEST_JITTER_SECONDS = 0.35
+const MEDIA_RETRY_JITTER_SECONDS = 0.8
+const VIDEO_REQUEST_JITTER_SECONDS = 0.2
+const LONG_TEXT_JITTER_SECONDS = 0.35
 
 interface IBaseFetchProps {
     url: string
     method?: 'POST' | 'GET'
     body?: Record<string, any>
     headers?: Record<string, any>
-    mode?: string
 }
 
-const baseFetch = ({ url, body, method, headers, mode }: IBaseFetchProps) => {
-    method = method || 'POST'
+const baseFetch = ({ url, body, method = 'POST', headers }: IBaseFetchProps) => {
     const requestHeaders = _.omitBy(
         {
             accept: 'application/json, text/plain, */*',
@@ -23,139 +24,39 @@ const baseFetch = ({ url, body, method, headers, mode }: IBaseFetchProps) => {
         },
         _.isNil
     )
-    let options: Record<string, any> = {
+
+    return fetch(url, {
         method,
         headers: requestHeaders,
         body: body ? JSON.stringify(body) : undefined,
-    }
-    if (mode) {
-        options.mode = mode
-    }
-    return fetch(url, options)
-}
-
-const fetchfetchToGetLikeUsersByPage = async ({
-    commentId,
-    pageId,
-}: {
-    commentId: string | number
-    pageId?: number
-}) => {
-    if (!pageId) pageId = 1
-    let likeUsersHtml = '',
-        userList: UserType[] = [],
-        totalPage = 1,
-        likeCounts = 0,
-        hasMore = false
-    try {
-        const response = await baseFetch({
-            url: `//weibo.com/aj/like/object/big?ajwvr=6&page=${pageId}&object_id=${commentId}&object_type=comment`,
-            method: 'GET',
-        })
-        const result = await response.json()
-        const { html, page, like_counts } = result?.data || {}
-        likeUsersHtml = html
-        ;(totalPage = page?.totalpage), (likeCounts = like_counts)
-        hasMore = totalPage > pageId
-
-        if (likeUsersHtml) {
-            likeUsersHtml.replace(
-                /\<li uid=\"(\d+)\"[\w\W].*\<img src\=\"([^\"]*)\" alt\=\"([^\"]*)\"/g,
-                ($total, $uid, $avatar, $title) => {
-                    // console.log($uid, $avatar, $title)
-                    userList.push({
-                        uid: $uid,
-                        avatar: $avatar,
-                        title: $title,
-                    })
-                    return ''
-                }
-            )
-        }
-    } catch (e) {
-        console.log(`fetchfetchToGetLikeUsersByPage`)
-    }
-
-    return {
-        likeUsersHtml,
-        userList,
-        totalPage,
-        likeCounts,
-        hasMore,
-    }
-}
-export const fetchToGetLikeUsers = async ({ commentId }: { commentId: string | number }) => {
-    if (!commentId) return
-    const likeUsersFirstPage = await fetchfetchToGetLikeUsersByPage({ commentId, pageId: 1 })
-    const { hasMore, totalPage, likeCounts } = likeUsersFirstPage || {}
-    if (!hasMore) {
-        return likeUsersFirstPage
-    }
-
-    let fetchList: any = []
-
-    let likeUsersHtml = likeUsersFirstPage.likeUsersHtml,
-        userList = likeUsersFirstPage.userList || []
-    _.map(
-        Array.from(
-            { length: totalPage < LimitPageOflikeUserFetch ? totalPage : LimitPageOflikeUserFetch },
-            (_, i) => i + 1
-        ),
-        pageId => {
-            if (pageId > 1) {
-                fetchList.push(fetchfetchToGetLikeUsersByPage({ commentId, pageId: pageId }))
-            }
-        }
-    )
-    const totalResult = await Promise.all(fetchList)
-    _.map(totalResult, result => {
-        likeUsersHtml += result.likeUsersHtml
-        userList = userList.concat(result.userList || [])
     })
-
-    return {
-        totalPage,
-        likeCounts,
-        hasMore: false,
-        likeUsersHtml,
-        userList,
-    }
 }
 
-export const fetchToGetImageBlob = async ({ imageUrl }: { imageUrl: string }): Promise<null | Blob> => {
-    if (!imageUrl) return null
-    try {
-        const response = await baseFetch({
-            url: imageUrl,
-            method: 'GET',
-        })
-
-        const respBlob = await response.blob()
-        // 防止请求过于密集
-        await sleep(3 * Math.random())
-        return respBlob
-    } catch (e) {
-        console.log(`fetchToGetImageBlob`, e)
-    }
-    return null
+const fetchBlobByXHR = async (url: string): Promise<Blob | null> => {
+    return new Promise<Blob | null>(resolve => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('get', url)
+        xhr.responseType = 'blob'
+        xhr.onload = () => {
+            resolve(xhr.status >= 200 && xhr.status < 300 ? (xhr.response as Blob) : null)
+        }
+        xhr.onerror = () => resolve(null)
+        xhr.send()
+    })
 }
 
-export const fetchToGetImageBlobByXHR = async ({ imageUrl }: { imageUrl: string }): Promise<null | Blob> => {
+export const fetchToGetImageBlobByXHR = async ({
+    imageUrl,
+    retryDelay = false,
+}: {
+    imageUrl: string
+    retryDelay?: boolean
+}): Promise<null | Blob> => {
     if (!imageUrl) return null
+
     try {
-        const responseBlob = await new Promise<Blob | null>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('get', imageUrl)
-            xhr.responseType = 'blob'
-            xhr.onload = () => {
-                resolve(xhr.response as Blob)
-            }
-            xhr.send()
-            xhr.onerror = () => {
-                resolve(null)
-            }
-        })
-        await sleep(3 * Math.random())
+        const responseBlob = await fetchBlobByXHR(imageUrl)
+        await sleep(Math.random() * (retryDelay ? MEDIA_RETRY_JITTER_SECONDS : MEDIA_REQUEST_JITTER_SECONDS))
         return responseBlob
     } catch (e) {
         console.log(`fetchToGetImageBlobByXHR`, e)
@@ -166,71 +67,31 @@ export const fetchToGetImageBlobByXHR = async ({ imageUrl }: { imageUrl: string 
 export const fetchToGetImageBlobByCloudflare = async ({
     imageUrl,
     host,
+    retryDelay = true,
 }: {
     imageUrl: string
     host?: string
+    retryDelay?: boolean
 }): Promise<null | Blob> => {
     if (!imageUrl) return null
+
     try {
-        const responseBlob = await new Promise<Blob | null>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('get', `https://${host || 'weibo-image-fetch.127321.xyz'}/?url=${encodeURIComponent(imageUrl)}`)
-            xhr.responseType = 'blob'
-            xhr.onload = () => {
-                resolve(xhr.response as Blob)
-            }
-            xhr.send()
-            xhr.onerror = () => {
-                resolve(null)
-            }
-        })
-        await sleep(3 * Math.random())
+        const proxyUrl = `https://${host || 'weibo-image-fetch.127321.xyz'}/?url=${encodeURIComponent(imageUrl)}`
+        const responseBlob = await fetchBlobByXHR(proxyUrl)
+        await sleep(Math.random() * (retryDelay ? MEDIA_RETRY_JITTER_SECONDS : MEDIA_REQUEST_JITTER_SECONDS))
         return responseBlob
     } catch (e) {
-        console.log(`fetchToGetImageBlobByXHR`, e)
-    }
-    return null
-}
-
-export const fetchToGetVideoBlob = async ({ videoUrl }: { videoUrl: string }): Promise<null | Blob> => {
-    if (!videoUrl) return null
-    try {
-        const response = await baseFetch({
-            url: videoUrl,
-            method: 'GET',
-            headers: {
-                'content-type': undefined,
-                accept: '*/*',
-                'sec-fetch-dest': 'video',
-                'accept-encoding': 'identity;q=1, *;q=0',
-            },
-            mode: 'no-cors',
-        })
-        const respBlob = await response.blob()
-        // 防止请求过于密集
-        await sleep(3 * Math.random())
-        return respBlob
-    } catch (e) {
-        console.log(`fetchToGetVideoBlob`, e)
+        console.log(`fetchToGetImageBlobByCloudflare`, e)
     }
     return null
 }
 
 export const fetchToGetVideoBlobByXHR = async ({ videoUrl }: { videoUrl: string }): Promise<null | Blob> => {
     if (!videoUrl) return null
+
     try {
-        const responseBlob = await new Promise<Blob | null>((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.open('get', videoUrl)
-            xhr.responseType = 'blob'
-            xhr.onload = () => {
-                resolve(xhr.response as Blob)
-            }
-            xhr.send()
-            xhr.onerror = () => {
-                resolve(null)
-            }
-        })
+        const responseBlob = await fetchBlobByXHR(videoUrl)
+        await sleep(Math.random() * VIDEO_REQUEST_JITTER_SECONDS)
         return responseBlob
     } catch (e) {
         console.log(`fetchToGetVideoBlobByXHR`, e)
@@ -240,6 +101,7 @@ export const fetchToGetVideoBlobByXHR = async ({ videoUrl }: { videoUrl: string 
 
 export const fetchToGetLongText = async ({ mblogId }: { mblogId?: string }) => {
     if (!mblogId) return null
+
     try {
         const response = await baseFetch({
             url: `//weibo.com/ajax/statuses/longtext?id=${mblogId}`,
@@ -248,8 +110,7 @@ export const fetchToGetLongText = async ({ mblogId }: { mblogId?: string }) => {
 
         const result = await response.json()
         const { longTextContent } = result?.data || {}
-        // 防止请求过于密集
-        await sleep(3 * Math.random())
+        await sleep(Math.random() * LONG_TEXT_JITTER_SECONDS)
         return longTextContent || null
     } catch (e) {
         console.log(`fetchToGetLongText`, e)

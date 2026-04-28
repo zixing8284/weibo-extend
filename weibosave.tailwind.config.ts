@@ -3,9 +3,9 @@ import type { Config } from 'tailwindcss'
 const config: Config = {
     important: '#weibo-extend-weibosave',
     content: [
-        './weiboSave/**/*.html',
-        './weiboSave/**/*.ts',
-        "./node_modules/tailwind-datepicker-react/dist/**/*.js", 
+        './weiboSave/index.html',
+        './weiboSave/scripts/weibosave.ts',
+        './node_modules/tailwind-datepicker-react/dist/**/*.js',
     ],
     theme: {
         extend: {

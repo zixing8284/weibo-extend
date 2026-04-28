@@ -1,87 +1,76 @@
-const path = require('path')
-const { CleanWebpackPlugin } = require('clean-webpack-plugin')
-const HtmlWebpackPlugin = require('html-webpack-plugin');
+const path = require("path");
+const { CleanWebpackPlugin } = require("clean-webpack-plugin");
+const HtmlWebpackPlugin = require("html-webpack-plugin");
 
-const outDir = path.resolve(__dirname, './extension/weiboSave')
-const scriptPath = path.resolve(__dirname, './weiboSave/scripts/')
+const outDir = path.resolve(__dirname, "./extension/weiboSave");
+const scriptPath = path.resolve(__dirname, "./weiboSave/scripts/");
 
 module.exports = {
-    mode: 'production', // 设置为 'development' 或 'production'
-    externals: {
-        './myblog.json': 'myblog',
-    },
-    entry: {
-        weibosave: path.resolve(scriptPath, './weibosave'),
-        singlepost: path.resolve(scriptPath, './singlepost'),
-    },
-    output: {
-        path: outDir,
-        filename: 'scripts/[name].js',
-    },
-    resolve: {
-        extensions: ['.ts', '.js', '.tsx'], // 解析的文件扩展名包括 .ts 和 .js
-    },
-    plugins: [
-        new CleanWebpackPlugin({
-            cleanOnceBeforeBuildPatterns: [
-                path.resolve(outDir, 'weibosave.js')
-            ],
-        }),
-        new HtmlWebpackPlugin({
-            template: './weiboSave/index.html',  // 指定 HTML 模板文件
-            filename: 'index.html',  // 输出的 HTML 文件名
-            minify: {
-              collapseWhitespace: true,  // 压缩 HTML 文件中的空白字符
-              removeComments: true,  // 删除 HTML 文件中的注释
+  mode: "production",
+  externals: {
+    "./myblog.json": "myblog",
+  },
+  entry: {
+    weibosave: path.resolve(scriptPath, "./weibosave"),
+  },
+  output: {
+    path: outDir,
+    filename: "scripts/[name].js",
+  },
+  resolve: {
+    extensions: [".ts", ".js", ".tsx"],
+  },
+  plugins: [
+    new CleanWebpackPlugin({
+      cleanOnceBeforeBuildPatterns: [
+        path.resolve(outDir, "index.html"),
+        path.resolve(outDir, "scripts/*"),
+      ],
+    }),
+    new HtmlWebpackPlugin({
+      template: "./weiboSave/index.html",
+      filename: "index.html",
+      minify: {
+        collapseWhitespace: true,
+        removeComments: true,
+      },
+      inject: false,
+    }),
+  ],
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        loader: "ts-loader",
+        options: {
+          compilerOptions: {
+            target: "es5",
+            noEmit: false,
+          },
+        },
+        exclude: /node_modules/,
+      },
+      {
+        test: /\.tsx$/,
+        exclude: /node_modules/,
+        use: [
+          {
+            loader: "babel-loader",
+            options: {
+              presets: ["@babel/preset-env", "@babel/preset-react"],
             },
-            inject: false, // 禁止自动插入，这样会执行两遍js
-        }),
-        new HtmlWebpackPlugin({
-            template: './weiboSave/singlePost.html',  // 指定 HTML 模板文件
-            filename: 'singlePost.html',  // 输出的 HTML 文件名
-            minify: {
-              collapseWhitespace: true,  // 压缩 HTML 文件中的空白字符
-              removeComments: true,  // 删除 HTML 文件中的注释
+          },
+          {
+            loader: "ts-loader",
+            options: {
+              compilerOptions: {
+                target: "es5",
+                noEmit: false,
+              },
             },
-            inject: false, // 禁止自动插入，这样会执行两遍js
-        })
-    ],
-    module: {
-        rules: [
-            {
-                test: /\.ts$/,
-                loader: 'ts-loader',
-                options: {
-                    // transpileOnly: true,
-                    compilerOptions: {
-                        target: 'es5',
-                        noEmit: false,
-                    },
-                },
-                exclude: /node_modules/,
-            },
-            {
-                test: /\.tsx$/,
-                exclude: /node_modules/,
-                use: [
-                    {
-                        loader: 'babel-loader',
-                        options: {
-                            presets: ['@babel/preset-env', '@babel/preset-react'],
-                        },
-                    },
-                    {
-                        loader: 'ts-loader',
-                        options: {
-                            // transpileOnly: true,
-                            compilerOptions: {
-                                target: 'es5',
-                                noEmit: false,
-                            },
-                        },
-                    },
-                ],
-            },
+          },
         ],
-    },
-}
+      },
+    ],
+  },
+};
